@@ -10,7 +10,7 @@ const db = new sqlite3.Database("./main.db");
 
 app.use(cors());
 
-app.get("/data/top10", (req, res) => {
+app.get("/data/worst10", (req, res) => {
   db.all(
     `
     SELECT 
@@ -55,6 +55,76 @@ LIMIT 10
     },
   );
 });
+
+app.get("/data/top10", (req, res) => {
+    db.all(
+      `
+      SELECT 
+      Bezeichnung, 
+      Bemerkung,
+      FraktionGruppe,
+      SUM(ja) AS ja, 
+      SUM(nein) AS nein, 
+      SUM(Enthaltung) AS enthaltung, 
+      SUM(ungültig) AS ungültig, 
+      SUM(nichtabgegeben) AS nichtabgegeben 
+  FROM ExcelData
+  GROUP BY Bezeichnung, Bemerkung
+  ORDER BY SUM(ja + nein + enthaltung) DESC
+  LIMIT 10
+      `,
+      (err, rows) => {
+        if (err) {
+          console.error(err.message);
+          return res.status(500).json({ error: "Internal Server Error" });
+        }
+  
+        // Format the response as an array of objects
+        const data = rows.map((row) => {
+          const formattedData = {
+            bezeichnung: `${row.Bezeichnung} (${row.FraktionGruppe})`,
+            ja: row.ja || 0,
+            nein: row.nein || 0,
+            enthaltung: row.enthaltung || 0,
+            ungültig: row.ungültig || 0,
+            nichtabgegeben: row.nichtabgegeben || 0,
+          };
+          if (row.Bemerkung) {
+            formattedData[`nichtabgegeben (${row.Bemerkung})`] =
+              row.nichtabgegeben;
+            delete formattedData.nichtabgegeben;
+          }
+          return formattedData;
+        });
+  
+        res.json(data);
+      },
+    );
+  });
+
+app.get("/data/top10/datum", (req, res) => {
+    db.get(
+      `
+      SELECT 
+        MIN(Datum) AS newestDate, 
+        MAX(Datum) AS oldestDate
+      FROM ExcelData
+      `,
+      (err, row) => {
+        if (err) {
+          console.error(err.message);
+          return res.status(500).json({ error: "Internal Server Error" });
+        }
+  
+        // Extract oldest and newest dates from the result row
+        const oldestDate = row.oldestDate;
+        const newestDate = row.newestDate;
+  
+        // Send the response as an array containing oldest and newest dates
+        res.json([oldestDate, newestDate]);
+      }
+    );
+  });
 
 app.get("/mitglieder/", (req, res) => {
   db.all(
